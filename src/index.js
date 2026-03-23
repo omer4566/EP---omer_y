@@ -1,29 +1,31 @@
 require("dotenv").config();
-const express = require("express");
+const fastify = require("fastify")({ logger: true });
 const { createClient } = require("redis");
-
-const app = express();
-app.use(express.json());
 
 const redis = createClient({ url: process.env.REDIS_URL });
 redis.on("error", (err) => console.error("Redis error:", err));
 redis.connect().then(() => console.log("Redis connected"));
 
-app.locals.redis = redis;
+fastify.decorate("redis", redis);
 
-// ✅ Ping is PUBLIC - move it above the auth middleware
-app.get("/ping", (req, res) => res.json({ ok: true }));
-
-// Auth middleware applies to everything below this line
-app.use((req, res, next) => {
-  if (req.headers["x-secret"] !== process.env.SECRET_KEY) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
+fastify.get("/ping", async (request, reply) => {
+  return { ok: true };
 });
 
-app.use("/vote", require("./routes/vote"));
-app.use("/results", require("./routes/results"));
+fastify.addHook("onRequest", async (request, reply) => {
+  if (request.headers["x-secret"] !== process.env.SECRET_KEY) {
+    reply.code(401).send({ error: "Unauthorized" });
+  }
+});
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Poll backend running on port ${PORT}`));
+fastify.register(require("./routes/vote"), { prefix: "/vote" });
+fastify.register(require("./routes/results"), { prefix: "/results" });
+
+const PORT = process.env.PORT || 8080;
+fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`Poll backend running on port ${PORT}`);
+});
