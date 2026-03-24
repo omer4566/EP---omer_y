@@ -1,5 +1,23 @@
 require("dotenv").config();
-const fastify = require("fastify")({ logger: true });
+const fastify = require("fastify")({
+  logger: {
+    level: 'error',
+    serializers: {
+      res(reply) {
+        return {
+          statusCode: reply.statusCode
+        };
+      },
+      req(request) {
+        return {
+          method: request.method,
+          url: request.url
+        };
+      }
+    }
+  },
+  disableRequestLogging: true
+});
 const { createClient } = require("redis");
 const resultsCache = require("./cache");
 
@@ -17,6 +35,18 @@ redis.connect().then(() => {
 
 fastify.decorate("redis", redis);
 fastify.decorate("resultsCache", resultsCache);
+
+// Log only errors (4xx and 5xx responses)
+fastify.addHook("onResponse", async (request, reply) => {
+  if (reply.statusCode >= 400) {
+    fastify.log.error({
+      method: request.method,
+      url: request.url,
+      statusCode: reply.statusCode,
+      responseTime: reply.getResponseTime()
+    }, `${request.method} ${request.url} - ${reply.statusCode}`);
+  }
+});
 
 fastify.get("/ping", async (request, reply) => {
   return { ok: true };
