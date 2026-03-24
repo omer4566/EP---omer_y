@@ -25,7 +25,7 @@ async function voteRoutes(fastify, options) {
     }
 
     const voterKeys = validVotes.map(v => `poll:${v.pollId}:voter:${v.userId}`);
-    const existingVotes = await redis.mget(voterKeys);
+    const existingVotes = await redis.mGet(voterKeys);
 
     const votesToProcess = validVotes.filter((_, index) => existingVotes[index] === null);
     if (votesToProcess.length === 0) {
