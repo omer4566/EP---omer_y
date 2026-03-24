@@ -8,11 +8,13 @@ async function resultsRoutes(fastify, options) {
 
     const cachedResults = fastify.resultsCache.get(pollId);
 
-    if (!cachedResults) {
-      return reply.send({ results: {}, total: 0 });
+    // Ensure keys are integers
+    const results = {};
+    for (const [key, count] of Object.entries(cachedResults.results)) {
+      results[parseInt(key)] = count;
     }
 
-    return reply.send(cachedResults);
+    return reply.send({ results, total: cachedResults.total });
   });
 }
 
