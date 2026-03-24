@@ -8,6 +8,10 @@ redis.on("error", (err) => console.error("Redis error:", err));
 redis.connect().then(() => {
   console.log("Redis connected");
   resultsCache.init(redis);
+
+  // init polls
+  resultsCache.setPollIds(['poll1', 'poll2', 'poll3']);
+
   console.log("Results cache initialized");
 });
 
