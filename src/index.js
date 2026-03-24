@@ -1,12 +1,18 @@
 require("dotenv").config();
 const fastify = require("fastify")({ logger: true });
 const { createClient } = require("redis");
+const resultsCache = require("./cache");
 
 const redis = createClient({ url: process.env.REDIS_URL });
 redis.on("error", (err) => console.error("Redis error:", err));
-redis.connect().then(() => console.log("Redis connected"));
+redis.connect().then(() => {
+  console.log("Redis connected");
+  resultsCache.init(redis);
+  console.log("Results cache initialized");
+});
 
 fastify.decorate("redis", redis);
+fastify.decorate("resultsCache", resultsCache);
 
 fastify.get("/ping", async (request, reply) => {
   return { ok: true };
