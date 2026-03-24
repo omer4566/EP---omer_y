@@ -1,29 +1,19 @@
-const express = require("express");
-const router = express.Router();
+async function resultsRoutes(fastify, options) {
+  fastify.get("/", async (request, reply) => {
+    const { pollId } = request.query;
 
-router.get("/", async (req, res) => {
-  const redis = req.app.locals.redis;
-  const { pollId } = req.query;
+    if (!pollId) {
+      return reply.code(400).send({ error: "Missing pollId" });
+    }
 
-  if (!pollId) {
-    return res.status(400).json({ error: "Missing pollId" });
-  }
+    const cachedResults = fastify.resultsCache.get(pollId);
 
-  const raw = await redis.hGetAll(`poll:${pollId}:results`);
+    if (!cachedResults) {
+      return reply.send({ results: {}, total: 0 });
+    }
 
-  if (!raw || Object.keys(raw).length === 0) {
-    return res.json({ results: {}, total: 0 });
-  }
+    return reply.send(cachedResults);
+  });
+}
 
-  const results = {};
-  let total = 0;
-  for (const [k, v] of Object.entries(raw)) {
-    const count = parseInt(v);
-    results[parseInt(k)] = count;
-    total += count;
-  }
-
-  return res.json({ results, total });
-});
-
-module.exports = router;
+module.exports = resultsRoutes;

@@ -1,32 +1,46 @@
-const express = require("express");
-const router = express.Router();
+async function voteRoutes(fastify, options) {
+  fastify.post("/", async (request, reply) => {
+    const redis = fastify.redis;
+    const { votes } = request.body; // Expecting { votes: [{ userId, optionIndex, pollId }] }
 
-router.post("/", async (req, res) => {
-  const redis = req.app.locals.redis;
-  const { userId, optionIndex, pollId } = req.body;
+    if (!Array.isArray(votes) || votes.length === 0) {
+      console.log("invalid votes array")
+      return reply.send();
+    }
 
-  if (!userId || !optionIndex || !pollId) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
+    const uniqueVotesMap = new Map();
+    for (const vote of votes) {
+      if (vote.userId && vote.optionIndex !== undefined && vote.pollId) {
+        const voterKey = `poll:${vote.pollId}:voter:${vote.userId}`;
 
-  const voterKey = `poll:${pollId}:voter:${userId}`;
-  const alreadyVoted = await redis.exists(voterKey);
-  if (alreadyVoted) {
-    return res.json({ success: false, reason: "already_voted" });
-  }
+        if (!uniqueVotesMap.has(voterKey)) {
+          uniqueVotesMap.set(voterKey, vote);
+        }
+      }
+    }
 
-  await redis.multi()
-    .hIncrBy(`poll:${pollId}:results`, String(optionIndex), 1)
-    .set(voterKey, "1")
-    .exec();
+    const validVotes = Array.from(uniqueVotesMap.values());
+    if (validVotes.length === 0) {
+      return reply.send();
+    }
 
-  const raw = await redis.hGetAll(`poll:${pollId}:results`);
-  const results = {};
-  for (const [k, v] of Object.entries(raw)) {
-    results[parseInt(k)] = parseInt(v);
-  }
+    const voterKeys = validVotes.map(v => `poll:${v.pollId}:voter:${v.userId}`);
+    const existingVotes = await redis.mget(voterKeys);
 
-  return res.json({ success: true, results });
-});
+    const votesToProcess = validVotes.filter((_, index) => existingVotes[index] === null);
+    if (votesToProcess.length === 0) {
+      return reply.send();
+    }
 
-module.exports = router;
+    const pipeline = redis.multi();
+    for (const vote of votesToProcess) {
+      pipeline.hIncrBy(`poll:${vote.pollId}:results`, String(vote.optionIndex), 1);
+      pipeline.set(`poll:${vote.pollId}:voter:${vote.userId}`, "1");
+    }
+    await pipeline.exec();
+
+    return reply.send({ success: true });
+  });
+}
+
+module.exports = voteRoutes;
